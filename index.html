@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>工作待辦清單工具 (手動存檔版)</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f0f2f5; padding: 20px; color: #333; }
+        .box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .input-input { padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; margin-right: 5px; }
+        .btn-add { background-color: #4f46e5; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer; }
+        .btn-save { background-color: #10b981; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer; margin-left: 10px; }
+        .btn-load { background-color: #6b7280; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer; margin-left: 5px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); min-height: 120px; }
+        .t1 { border-top: 4px solid #ef4444; }
+        .t2 { border-top: 4px solid #f59e0b; }
+        .t3 { border-top: 4px solid #3b82f6; }
+        .t4 { border-top: 4px solid #6b7280; }
+        .title { font-weight: bold; margin-bottom: 10px; font-size: 15px; }
+        .item { display: flex; justify-content: space-between; background: #f9f9f9; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 14px; border: 1px solid #eee; }
+        .btn-x { background: none; border: none; color: #aaa; cursor: pointer; font-weight: bold; }
+        .btn-x:hover { color: red; }
+    </style>
+</head>
+<body>
+
+    <h2>🎯 任務高效管理工具 (手動存檔版)</h2>
+
+    <!-- 輸入與存檔區塊 -->
+    <div class="box">
+        <input type="text" id="txTitle" class="input-input" style="width: 230px;" placeholder="請輸入任務名稱">
+        <input type="date" id="txDate" class="input-input" value="2026-09-29">
+        <select id="txLevel" class="input-input">
+            <option value="1">🔥 重要且緊急</option>
+            <option value="2">⏳ 重要不緊急</option>
+            <option value="3">⚡ 緊急不重要</option>
+            <option value="4">☕ 不重要不緊急</option>
+        </select>
+        <button type="button" class="btn-add" onclick="doAdd()">新增任務</button>
+        
+        <!-- 存檔與讀取按鈕 -->
+        <button type="button" class="btn-save" onclick="doSaveDownload()">💾 儲存下載資料</button>
+        <button type="button" class="btn-load" onclick="document.getElementById('fileInput').click()">📂 讀取舊資料</button>
+        <input type="file" id="fileInput" accept=".json" style="display:none;" onchange="doLoadFile(event)">
+    </div>
+
+    <!-- 四象限顯示區 -->
+    <div class="grid">
+        <div class="card t1"><div class="title" style="color:#ef4444;">重要且緊急 🔥</div><div id="m1"></div></div>
+        <div class="card t2"><div class="title" style="color:#f59e0b;">重要不緊急 ⏳</div><div id="m2"></div></div>
+        <div class="card t3"><div class="title" style="color:#3b82f6;">緊急不important ⚡</div><div id="m3"></div></div>
+        <div class="card t4"><div class="title" style="color:#6b7280;">不重要不緊急 ☕</div><div id="m4"></div></div>
+    </div>
+
+    <!-- 狀態分類清單 -->
+    <div class="box">
+        <div class="title">📋 分類清單展示（今日 / 逾期 / 已完成）</div>
+        <div id="list-area"></div>
+    </div>
+
+<script>
+    var myTodos = [];
+    var todayStr = "2026-09-29";
+
+    function doRender() {
+        document.getElementById("m1").innerHTML = "";
+        document.getElementById("m2").innerHTML = "";
+        document.getElementById("m3").innerHTML = "";
+        document.getElementById("m4").innerHTML = "";
+        document.getElementById("list-area").innerHTML = "";
+
+        for (var i = 0; i < myTodos.length; i++) {
+            var item = myTodos[i];
+            var div = document.createElement("div");
+            div.className = "item";
+            
+            var tag = " [未來] ";
+            if (item.date === todayStr) tag = " [今日] ";
+            if (item.date < todayStr) tag = " [逾期] ";
+            if (item.done) tag = " [已完成] ";
+
+            div.innerHTML = "<span>" + tag + item.title + " (" + item.date + ")</span>" +
+                            "<button class='btn-x' onclick='doDelete(" + item.id + ")'>❌</button>";
+
+            if (item.done) {
+                document.getElementById("list-area").appendChild(div);
+            } else {
+                var targetBox = document.getElementById("m" + item.level);
+                if (targetBox) {
+                    div.style.cursor = "pointer";
+                    div.title = "點擊標記為已完成";
+                    // 修正閉包問題以利點擊
+                    (function(id) {
+                        div.onclick = function(e) {
+                            if(e.target.tagName !== 'BUTTON') { doComplete(id); }
+                        };
+                    })(item.id);
+                    targetBox.appendChild(div);
+                }
+                
+                if (item.date === todayStr || item.date < todayStr) {
+                    var cloneDiv = div.cloneNode(true);
+                    (function(id) {
+                        cloneDiv.onclick = function(e) {
+                            if(e.target.tagName !== 'BUTTON') { doComplete(id); }
+                        };
+                    })(item.id);
+                    document.getElementById("list-area").appendChild(cloneDiv);
+                }
+            }
+        }
+        
+        if (myTodos.length === 0) {
+            document.getElementById("list-area").innerHTML = "<p style='color:#999;text-align:center;'>目前沒有任何任務，請從上方新增！</p>";
+        }
+    }
+
+    function doAdd() {
+        var t = document.getElementById("txTitle").value.trim();
+        var d = document.getElementById("txDate").value;
+        var l = document.getElementById("txLevel").value;
+
+        if (t === "") { alert("請輸入任務名稱！"); return; }
+
+        myTodos.push({ id: new Date().getTime(), title: t, date: d, level: l, done: false });
+        document.getElementById("txTitle").value = "";
+        doRender();
+    }
+
+    function doComplete(id) {
+        for (var i = 0; i < myTodos.length; i++) {
+            if (myTodos[i].id === id) { myTodos[i].done = true; break; }
+        }
+        doRender();
+    }
+
+    function doDelete(id) {
+        var temp = [];
+        for (var i = 0; i < myTodos.length; i++) {
+            if (myTodos[i].id !== id) { temp.push(myTodos[i]); }
+        }
+        myTodos = temp;
+        doRender();
+    }
+
+    // 新增：將資料下載到電腦
+    function doSaveDownload() {
+        if(myTodos.length === 0) { alert("目前沒有資料可以儲存。"); return; }
+        var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(myTodos));
+        var downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", "todo_data.json");
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+    }
+
+    // 新增：讀取電腦裡的資料檔案
+    function doLoadFile(event) {
+        var input = event.target;
+        var reader = new FileReader();
+        reader.onload = function(){
+            try {
+                var data = JSON.parse(reader.result);
+                if (Array.isArray(data)) {
+                    myTodos = data;
+                    doRender();
+                    alert("成功讀取 " + data.length + " 筆任務資料！");
+                }
+            } catch (e) { alert("檔案讀取失敗，請確認檔案格式是否正確。"); }
+        };
+        if(input.files && input.files[0]) {
+            reader.readAsText(input.files[0]);
+        }
+    }
+
+    doRender();
+</script>
+
+</body>
+</html>
